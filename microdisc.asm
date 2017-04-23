@@ -10,31 +10,61 @@
 ; Disassembled by F. Frances
 ; comments added by jede
 ; Xa source code by jede
+; with the help of Sedoric à nu
+
 
 #include "fdc1793.h"
 ; 2 bytes
 #define adress_buffer_loading_saving $FE
 ; 2 bytes
+
+#define SEDORIC_TRACK $c001
+
+#define SEDORIC_SECTOR $c002
+
+#define SEDORIC_POSNMP	$c025
+
+#define SEDORIC_POSNMS	$c026
+
+#define SEDORIC_POSNMX	$c027
+
+#define SEDORIC_DRVSYS $c00a
+
 #define buffer_adress_buffer_loading_saving $c003 
+
+#define SEDORIC_IDERROR $04fd
+
+#define SEDORIC_BUF1	$c100
+#define SEDORIC_DRIVE	$c000
+
 
 *=$e000
 eprom_microdisc
 
-	JMP $E5C2	; initializes some parameters
-	JMP $E20C	; FDC routine
-	JMP $EB34
-	JMP $E4CE	; loads a file
-	JMP $EAD3	; searches a file
+	JMP initialize_some_parameters	; initializes some parameters
+	JMP launch_fdc_command	; FDC routine $e20c
+; $e006
+some_other_inits_vector	
+	JMP LEB34
+; TODO
+	JMP loads_a_file	; loads a file
+;$E00C	
+reads_first_directory_sector_vector
+	JMP reads_first_directory_sector	; searches a file
 	JMP $E4DE	; error "File not found"
 	JMP $EAFC
 	JMP $E117	; lets the user type a command in TIB
 	JMP $E11F	; waits for a keypress
+; $e01b
+error_routine_vector	
 	JMP $E7DC	; error routine
 	JMP $E816	; dummy, points to a RTS
 	JMP $E817	; writes a sector
 	JMP $E825	; reads sector
 	JMP $E82B	; reads boot sector
-	JMP $E846	; checks drive number
+; $e02a
+checks_drive_number_vector	
+	JMP checks_drive_number	; checks drive number
 	JMP $E854	; prints string pointed by ($0C)
 	JMP $E980	; points to next directory entry
 	JMP $E872	; reads system parameters from boot sector
@@ -105,31 +135,31 @@ eprom_microdisc
 NMI_START
 ; E0ae
 	pha
-        lda     $0481
-        pha
-        lda     $0485
-        pha
-        lda     $0486
-        pha
-        lda     $0480
-        and     #$FE
-        sta     $0480
-        sta     MICRODISC_FDC
-        lda     #$00
-        sta     $0485
-        lda     #$00
-        sta     $0486
-        lda     #$06
-        sta     $0481
-        jsr     $0490
-        pla
-        sta     $0486
-        pla
-        sta     $0485
-        pla
-        sta     $0481
-        pla
-        rti
+    lda     $0481
+    pha
+    lda     $0485
+    pha
+    lda     $0486
+    pha
+    lda     $0480
+    and     #$FE
+    sta     $0480
+    sta     MICRODISC_FDC
+    lda     #$00
+    sta     $0485
+    lda     #$00
+    sta     $0486
+    lda     #$06
+    sta     $0481
+    jsr     $0490
+    pla
+    sta     $0486
+    pla
+    sta     $0485
+    pla
+    sta     $0481
+    pla
+    rti
 ;******************************************************************************
 ;           IRQ wrapper 
 ;        -> switch to ROM and exec the Basic IRQ handler
@@ -138,31 +168,31 @@ irq_wrapper
 ;
 ; $e0e6	
 	pha
-        txa
-        pha
-        lda     $0481
-        pha
-        lda     $0485
-        pha
-        lda     $0486
-        pha
-        lda     #$8A
-        sta     $0485
-        lda     #$04
-        sta     $0486
-        lda     #$06
-        sta     $0481
-        jsr     $0490
-        pla
-        sta     $0486
-        pla
-        sta     $0485
-        pla
-        sta     $0481
-        pla
-        tax
-        pla
-        rti    
+    txa
+    pha
+    lda     $0481
+    pha
+    lda     $0485
+    pha
+    lda     $0486
+    pha
+    lda     #$8A
+    sta     $0485
+    lda     #$04
+    sta     $0486
+    lda     #$06
+    sta     $0481
+    jsr     $0490
+    pla
+    sta     $0486
+    pla
+    sta     $0485
+    pla
+    sta     $0481
+    pla
+    tax
+    pla
+    rti    
 
 ;******************************************************************************
 ; waits for the user to type a command in TIB
@@ -192,7 +222,7 @@ irq_wrapper
 ; prints char
 ;
 	PHP 
-	STX $C151
+	STX SEDORIC_BUF1+$51
 	TAX 
 	PHA 
 	LDA $0C
@@ -206,7 +236,7 @@ irq_wrapper
 	PLA 
 	STA $0C
 	PLA 
-	LDX $C151
+	LDX SEDORIC_BUF1+$51
 	PLP 
 	RTS 
   
@@ -244,8 +274,8 @@ irq_wrapper
 ; interprets decimal and hexadecimal numbers
 
 	LDA #$00	; initializes the number read
-	STA $C145
-	STA $C146
+	STA SEDORIC_BUF1+$45
+	STA SEDORIC_BUF1+$46
 	LDA ($E9),Y	; skips any blanks
 	INY 
 	CMP #$20
@@ -258,15 +288,15 @@ irq_wrapper
 	BCC $E19F	; is it a hex digit ?
 	INY 		; yes, computes the hex number read so far
 	LDX #$04
-	ASL $C145
-	ROL $C146
+	ASL SEDORIC_BUF1+$45
+	ROL SEDORIC_BUF1+$46
 	DEX 
 	BNE $E187
 	CLC
-	ADC $C145
-	STA $C145
+	ADC SEDORIC_BUF1+$45
+	STA SEDORIC_BUF1+$45
 	BCC $E17D
-	INC $C146
+	INC SEDORIC_BUF1+$46
 	JMP $E17D
 	SEC 		; no, returns C=1
 	RTS 
@@ -276,27 +306,27 @@ irq_wrapper
 	BCC $E1A0
 	INY 
 	PHA 
-	LDA $C146
+	LDA SEDORIC_BUF1+$46
 	PHA 
-	LDA $C145
-	ASL $C145
-	ROL $C146
-	ASL $C145
-	ROL $C146
+	LDA SEDORIC_BUF1+$45
+	ASL SEDORIC_BUF1+$45
+	ROL SEDORIC_BUF1+$46
+	ASL SEDORIC_BUF1+$45
+	ROL SEDORIC_BUF1+$46
 	CLC 
-	ADC $C145
-	STA $C145
+	ADC SEDORIC_BUF1+$45
+	STA SEDORIC_BUF1+$45
 	PLA 
-	ADC $C146
-	STA $C146
-	ASL $C145
-	ROL $C146
+	ADC SEDORIC_BUF1+$46
+	STA SEDORIC_BUF1+$46
+	ASL SEDORIC_BUF1+$45
+	ROL SEDORIC_BUF1+$46
 	PLA 
 	CLC 
-	ADC $C145
-	STA $C145
+	ADC SEDORIC_BUF1+$45
+	STA SEDORIC_BUF1+$45
 	BCC $E1DD
-	INC $C146
+	INC SEDORIC_BUF1+$46
 	LDA ($E9),Y
 	JSR $E1E6
 	BCS $E1A7
@@ -334,7 +364,7 @@ irq_wrapper
 ;  write sector command
 ;******************************************************************************
 	LDX #$A0
-	BNE $E20C
+	BNE launch_fdc_command ; $e20c
 ;******************************************************************************
 ;  read sector command
 ;******************************************************************************
@@ -342,12 +372,14 @@ irq_wrapper
 ;******************************************************************************
 ;  FDC routine: command specified in register X
 ;******************************************************************************
-	JSR $E3E3	; disables timer1 interrupts
+;$E20C
+launch_fdc_command
+	JSR disable_timer1_interrupt	; disables timer1 interrupts
 	JSR start_fdc	; the FDC routine itself
 	PHP 
 	TXA 
 	PHA 
-	JSR $E3EB	; enables timer1 interrupts
+	JSR enable_timer1_interrupt	; enables timer1 interrupts
 	PLA 
 	TAX 
 	PLP 
@@ -439,7 +471,7 @@ start_fdc
 	BCS $E2BC	; step commands ? issue them ...
 	CPY #$10
 	BCC $E2BC	; restore track 0 command ? issue it...
-	LDA $C001	; no, then it is a seek command
+	LDA SEDORIC_TRACK	; no, then it is a seek command
 	AND #$7F
 	STA MICRODISC_FDC_DATA	; programs the track wanted
 	JMP $E2BC
@@ -479,10 +511,10 @@ run_fdc_command
 ; e2c3
 
 read_write_sector
-	LDA $C001
+	LDA SEDORIC_TRACK
 	AND #$7F
-	NOP 	
-	NOP 
+	NOP 	; Optimize ?
+	NOP     ; optimize
 	CMP MICRODISC_FDC_TRACK
 	BEQ $E2E0	; is the head already on the right track ?
 					; no, seeks the right track first
@@ -494,7 +526,7 @@ read_write_sector
 	BCS $E32D
 	NOP 
 					; ok, the head is on the right track
-	LDA $C002
+	LDA SEDORIC_SECTOR
 	STA MICRODISC_FDC_SECTOR	; programs the wanted sector
 	TYA 
 	AND #$20
@@ -570,11 +602,11 @@ read_write_command
 ;
 ; e337
 update_track
-	LDA $C000
+	LDA SEDORIC_DRIVE
 	AND #$03
 	TAX 
 	LDA $E3F3,X
-	BIT $C001
+	BIT SEDORIC_TRACK
 	BPL $E347
 	ORA #$10
 	STA MICRODISC_FDC	; programs drive and side numbers
@@ -655,48 +687,56 @@ execute_fdc_command
 
 IRQ_START
 ;E3e0    
-        pha
-        lda     MICRODISC_FDC
-        bmi     microdisc_irq_not_from_disc 	; checks if the IRQ comes from disk
-        pla ; ...yes, continue here and pull 
-        lda     $0480
-        and     #$FE
-        sta     $0480
-        sta     MICRODISC_FDC
-        pla ; get rid of the IRQ context !!
-        pla
-        pla
-        lda     MICRODISC_FDC_COMMAND ; so, we are now in the interrupted routine !
-        and     #$5D
-        sta     $04FE ; store FDC's status (only interesting flags)
-        cli ; enable interrupts
-        rts; and return to the *caller* of the interrupted routine
+    pha
+    lda     MICRODISC_FDC
+    bmi     microdisc_irq_not_from_disc 	; checks if the IRQ comes from disk
+    pla ; ...yes, continue here and pull 
+    lda     $0480
+    and     #$FE
+    sta     $0480
+    sta     MICRODISC_FDC
+    pla ; get rid of the IRQ context !!
+    pla
+    pla
+    lda     MICRODISC_FDC_COMMAND ; so, we are now in the interrupted routine !
+    and     #$5D
+    sta     $04FE ; store FDC's status (only interesting flags)
+    cli ; enable interrupts
+    rts; and return to the *caller* of the interrupted routine
 					; (not the interrupted routine itself !)
 microdisc_irq_not_from_disc					
 	pla ; IRQ doesn't come from disk,
-        jmp     irq_wrapper ; go to the normal IRQ handler
-        pha
+    jmp     irq_wrapper ; go to the normal IRQ handler
+
+	
 	; disables timer1 interrupts
-LE404:  lda     #$40
-        sta     $030E
-        pla
-        rts
-; enables timer1 interrupts	
-        pha
-        lda     #$C0
-        sta     $030E
-        pla
-        rts
+
+; $E3E3
+disable_timer1_interrupt
+    pha
+	lda     #$40
+    sta     $030E
+    pla
+    rts
+
+;$e3eb
+enable_timer1_interrupt	
+	; enables timer1 interrupts	
+    pha
+    lda     #$C0
+    sta     $030E
+    pla
+    rts
 
 
 
 ;******************************************************************************
-	.byt 04,$24,$44,$64			; drive numbers
+	.byt $04,$24,$44,$64			; drive numbers
 
 ;******************************************************************************
 ;  interpreter routine to load a program... not used
 ;
-	JSR $E006
+	JSR some_other_inits_vector
 	JSR $E04B
 	JSR $EB45
 	JSR $E000
@@ -711,36 +751,36 @@ LE404:  lda     #$40
 	LDA ($E9),Y
 	CMP #$4E	; is it a 'N' ?
 	BNE $E41D
-	STA $C14F
+	STA SEDORIC_BUF1+$4F
 	BPL $E404
 	CMP #$44	; is it a 'D' ?
 	BNE $E42B
-	STA $C150
+	STA SEDORIC_BUF1+$50
 	BPL $E404
 	LDX #$01	; invalid command end
-	JMP $E01B
+	JMP error_routine_vector
 	CMP #$4A	; is it a 'J' ?
 	BNE $E444
-	STA $C141	; yes: Join
+	STA SEDORIC_BUF1+$41	; yes: Join
 	LDA $9C
 	SEC 
 	SBC #$02
-	STA $C14D
+	STA SEDORIC_BUF1+$4D
 	LDA $9D
 	SBC #$00
-	STA $C14E
+	STA SEDORIC_BUF1+$4E
 	JMP $E404
 	CMP #$41	; is it a 'A' ?
 	BNE $E426
-	STA $C14F
-	STA $C141
+	STA SEDORIC_BUF1+$4F
+	STA SEDORIC_BUF1+$41
 	INY 
 	JSR $E05D	; reads a number
 	BCC $E426
-	LDA $C146
-	STA $C14E
-	LDA $C145
-	STA $C14D
+	LDA SEDORIC_BUF1+$46
+	STA SEDORIC_BUF1+$4E
+	LDA SEDORIC_BUF1+$45
+	STA SEDORIC_BUF1+$4D
 	BCS $E405
 					; execs the command, ie loads specified file
 	TYA 
@@ -748,13 +788,13 @@ LE404:  lda     #$40
 	JSR $E009	; loads file
 	PLA 
 	TAY 
-	LDA $C14C
+	LDA SEDORIC_BUF1+$4C
 	BEQ $E476
-	LDA $C14F
+	LDA SEDORIC_BUF1+$4F
 	BPL $E476
-	JMP ($C14B)	; auto-run
+	JMP (SEDORIC_BUF1+$4B)	; auto-run
 
-	LDA $C14B
+	LDA SEDORIC_BUF1+$4B
 	BNE $E47E
 	JMP $E069	; uncomplete ! (points to 0000)
 	CMP #$03	 
@@ -783,10 +823,10 @@ LE404:  lda     #$40
 	.byt $1F,$C9,$52,$C9
         JSR $E05A	; let's the interpreter points to the basic program
 	.byt $65,$C7,$3A,$C7
-	LDA $C14B
+	LDA SEDORIC_BUF1+$4B
 	CMP #$01
 	BEQ $E4C7
-	BIT $C14F
+	BIT SEDORIC_BUF1+$4F
 	BPL $E4C7
 	JMP $E069	; uncomplete, points to 0000
 	JSR $E05A	; runs Basic interpreter
@@ -794,64 +834,72 @@ LE404:  lda     #$40
 
 ;******************************************************************************
 ; loads a file
+;$e4ce
 
-	LDA $C12B
-	STA $C000
-	JSR $E02A	; checks drive number
-	JSR $E00C	; searches the file
+loads_a_file
+.(
+	LDA SEDORIC_BUF1+$2B
+	STA SEDORIC_DRIVE
+	JSR checks_drive_number_vector		; checks drive number
+	JSR reads_first_directory_sector_vector	; searches the file
 	CPX #$00
-	BNE $E4E3
+	BNE skip
 	LDX #$00	; File not found
-	JMP $E01B
-	LDA $C02F,X	; File found, reads first sector of it
-	STA $C001
+	JMP error_routine_vector
+;$e4e3
+skip	
+	LDA $C02F,X		; File found, reads first sector of it
+	STA SEDORIC_TRACK
 	LDA $C02E,X
 	JSR $E83F
 	LDX #$00
 	LDY #$02
-	BPL $E4F7
+	BPL skip2
 	TXA 
-	TAY 
-	LDA $C141
-	BNE $E508	; is it a 'Join' ?
-	LDA $C025,Y	; no, uses first start address as global address
-	STA $C14D
-	LDA $C026,Y
-	STA $C14E
+	TAY
+skip2
+	LDA SEDORIC_BUF1+$41
+	BNE skip3	; is it a 'Join' ?
+	LDA SEDORIC_POSNMP,Y	; no, uses first start address as global address
+	STA SEDORIC_BUF1+$4D
+	LDA SEDORIC_POSNMS,Y
+	STA SEDORIC_BUF1+$4E
+;$e508	
+skip3	
 	SEC 		; computes end address of record
-	LDA $C14D
-	SBC $C025,Y
-	STA $C025,Y
-	LDA $C14E
-	SBC $C026,Y
-	STA $C026,Y
+	LDA SEDORIC_BUF1+$4D
+	SBC SEDORIC_POSNMP,Y
+	STA SEDORIC_POSNMP,Y
+	LDA SEDORIC_BUF1+$4E
+	SBC SEDORIC_POSNMS,Y
+	STA SEDORIC_POSNMS,Y
 	CLC 
-	LDA $C025,Y
-	ADC $C027,Y
-	STA $C027,Y
-	LDA $C026,Y
+	LDA SEDORIC_POSNMP,Y
+	ADC SEDORIC_POSNMX,Y
+	STA SEDORIC_POSNMX,Y
+	LDA SEDORIC_POSNMS,Y
 	ADC $C028,Y
 	STA $C028,Y
 	CPX #$00
 	BNE $E53E
 	LDA $C02A,Y
-	STA $C14C
+	STA SEDORIC_BUF1+$4C
 	LDA $C029,Y
-	STA $C14B
+	STA SEDORIC_BUF1+$4B
 	
-	LDA $C150
+	LDA SEDORIC_BUF1+$50
 	BMI $E579	; is trace required ?
-	LDA $C14E	; if yes, prints addresses
+	LDA SEDORIC_BUF1+$4E	; if yes, prints addresses
 	JSR $E14D
-	LDA $C14D
+	LDA SEDORIC_BUF1+$4D
 	JSR $E14D
 	LDA #$20
 	JSR $E057
 	LDA $C028,Y
 	JSR $E14D
-	LDA $C027,Y
+	LDA SEDORIC_POSNMX,Y
 	JSR $E14D
-	LDA $C141
+	LDA SEDORIC_BUF1+$41
 	BNE $E576
 	LDA #$20
 	JSR $E057
@@ -861,9 +909,9 @@ LE404:  lda     #$40
 	JSR $E14D
 	JSR $E054
 	
-	LDA $C14D
+	LDA SEDORIC_BUF1+$4D
 	STA $0C
-	LDA $C14E
+	LDA SEDORIC_BUF1+$4E
 	STA $0D
 	CLC 
 	TYA 
@@ -875,7 +923,7 @@ LE404:  lda     #$40
 	CMP #$FF
 	BNE $E596
 	JMP $E4F5
-	STA $C141
+	STA SEDORIC_BUF1+$41
 	LDY #$00
 	INX 
 	LDA $C023,X
@@ -883,29 +931,31 @@ LE404:  lda     #$40
 	INC $0C
 	BNE $E5A7
 	INC $0D
-	DEC $C141
+	DEC SEDORIC_BUF1+$41
 	BNE $E59B
 	INX 
 	BNE $E58A
 	LDA $C023
-	STA $C001
+	STA SEDORIC_TRACK
 	LDA $C024
 	BEQ $E5C1
 	JSR $E83F
 	LDX #$02
 	BPL $E58A
 	RTS 
+.)
 
 ;******************************************************************************
 ; initializes some parameters
+initialize_some_parameters
 	LDA #$FF
-	STA $C14F
-	STA $C150
-	STA $C13C
+	STA SEDORIC_BUF1+$4f
+	STA SEDORIC_BUF1+$50
+	STA SEDORIC_BUF1+$3C
 	LDA #$00
-	STA $C14D
-	STA $C14E
-	STA $C141
+	STA SEDORIC_BUF1+$4D
+	STA SEDORIC_BUF1+$4E
+	STA SEDORIC_BUF1+$41
 	RTS 
 
 	; $e5d9
@@ -960,11 +1010,12 @@ eprom_microdisc_str_illegal_attribute
 ;
 	INX
 	STX $04FF
-	JMP ($C149)	; clearly, this instruction has been added
+	JMP (SEDORIC_BUF1+$49)	; clearly, this instruction has been added
 						; the error routine is below but not used
 
+
 	DEX 
-	LDA $04FD
+	LDA SEDORIC_IDERROR
 	AND #$01
 	BEQ $E7EE
 	JMP $E069	; uncomplete, points to 0000
@@ -993,7 +1044,7 @@ eprom_microdisc_str_illegal_attribute
 	LDA $04FE
 	BEQ $E824
 	LDX #$05	; Disc error
-	JMP $E01B
+	JMP error_routine_vector
 	RTS 
   
 ;******************************************************************************
@@ -1003,28 +1054,36 @@ eprom_microdisc_str_illegal_attribute
 	
 ;******************************************************************************
 ; reads boot sector
+; $e82b
+
+reads_boot_sector
 	LDA #$23
 	STA buffer_adress_buffer_loading_saving
 	LDA #$C0
 	STA buffer_adress_buffer_loading_saving+1
 	LDA #$00
-	STA $C001
-	STA $C00A
+	STA SEDORIC_TRACK
+	STA SEDORIC_DRVSYS
 	LDA #$01
-	STA $C002
+	STA SEDORIC_SECTOR
 	JSR $E024
 	RTS 
   
 ;******************************************************************************
 ; checks drive number
 ;
-	LDX $C000
+;$e846
+checks_drive_number
+.(
+	LDX SEDORIC_DRIVE
 	LDA $C013,X
-	BEQ $E84F
+	BEQ skip
 	RTS 
+;$e84f
+skip
 	LDX #$03	; bad drive number
-	JMP $E01B
-
+	JMP error_routine_vector
+.)
 ;******************************************************************************
 ; prints string pointed by ($0C)
 ;
@@ -1038,9 +1097,9 @@ eprom_microdisc_str_illegal_attribute
 
 ;******************************************************************************
 ; not used
-	LDA $C146
+	LDA SEDORIC_BUF1+$46
 	BNE $E86F
-	LDA $C145
+	LDA SEDORIC_BUF1+$45
 	BMI $E86F
 	CMP #$04
 	BMI $E871
@@ -1052,7 +1111,7 @@ eprom_microdisc_str_illegal_attribute
 	JSR $E027
 	LDX #$07
 	LDA $C033,X
-	STA $C123,X
+	STA SEDORIC_BUF1+$23,X
 	DEX 
 	BPL $E877
 	RTS 
@@ -1062,7 +1121,7 @@ eprom_microdisc_str_illegal_attribute
 ; writes system parameters to boot sector
 	JSR $E027
 	LDX #$07
-	LDA $C123,X
+	LDA SEDORIC_BUF1+$23,X
 	STA $C033,X
 	DEX 
 	BPL $E886
@@ -1071,66 +1130,68 @@ eprom_microdisc_str_illegal_attribute
 
 ;******************************************************************************
 ; adds a directory entry (no used)
-	LDA $C13E
-	STA $C001
-	LDA $C13D
+	LDA SEDORIC_BUF1+$3E
+	STA SEDORIC_TRACK
+	LDA SEDORIC_BUF1+$3D
 	JSR $E83F	; reads sector (C13D) track (C13E)
 	LDX #$00
-	LDY $C13F
-	LDA $C12C,X
+	LDY SEDORIC_BUF1+$3F
+	LDA SEDORIC_BUF1+$2C,X
 	STA $C023,Y
 	INY 
 	INX 
 	CPX #$10
 	BNE $E8A4
-	INC $C025
+	INC SEDORIC_POSNMP
 	JSR $E021
 	RTS 
 
 ;******************************************************************************
+.(
 	JSR $E03F
-	BEQ $E8C4
-	INC $C129
-	BNE $E8C4
-	INC $C12A
+	BEQ skip 
+	INC SEDORIC_BUF1+$29
+	BNE skip
+	INC SEDORIC_BUF1+$2A
+skip ; $e8c4	
 	RTS 
-
+.)
 ;******************************************************************************
-	LDA $C123
+	LDA SEDORIC_BUF1+$23
 	BEQ $E8F5
-	STA $C002
-	LDA $C124
-	STA $C001
+	STA SEDORIC_SECTOR
+	LDA SEDORIC_BUF1+$24
+	STA SEDORIC_TRACK
 	JSR $E024
 	LDA $C024
-	STA $C123
+	STA SEDORIC_BUF1+$23
 	LDA $C023
-	STA $C124
+	STA SEDORIC_BUF1+$24
 	SEC 
-	LDA $C127
+	LDA SEDORIC_BUF1+$27
 	SBC #$01
-	STA $C127
-	LDA $C128
+	STA SEDORIC_BUF1+$27
+	LDA SEDORIC_BUF1+$28
 	SBC #$00
-	STA $C128
+	STA SEDORIC_BUF1+$28
 	LDA #$01
 	RTS 
 ;******************************************************************************
 ; finds a free directory entry
 	JSR $E024
-	LDA $C025
+	LDA SEDORIC_POSNMP
 	CMP #$0F
 	BNE $E931	; this directory sector is full ?
 	LDA $C024	; yes
 	BEQ $E911	; is it the last dir sector ?
-	STA $C002	; no, reads next one
+	STA SEDORIC_SECTOR	; no, reads next one
 	LDA $C023
-	STA $C001
+	STA SEDORIC_TRACK
 	JMP $E8F6
-	LDA $C123	; yes,
+	LDA SEDORIC_BUF1+$23	; yes,
 	BEQ $E94F
 	STA $C024
-	LDA $C124
+	LDA SEDORIC_BUF1+$24
 	STA $C023
 	JSR $E021
 	JSR $E03F
@@ -1149,15 +1210,15 @@ eprom_microdisc_str_illegal_attribute
 	TAX 
 	BNE $E933
 	TXA 		; and returns it
-	STA $C13F
-	LDA $C001
-	STA $C13E
-	LDA $C002
-	STA $C13D
+	STA SEDORIC_BUF1+$3F
+	LDA SEDORIC_TRACK
+	STA SEDORIC_BUF1+$3E
+	LDA SEDORIC_SECTOR
+	STA SEDORIC_BUF1+$3D
 	RTS 
 ;******************************************************************************
 	JSR $E024
-	LDX $C13F
+	LDX SEDORIC_BUF1+$3F
 	BNE $E980
 	JSR $E024
 	LDX #$03
@@ -1169,7 +1230,7 @@ eprom_microdisc_str_illegal_attribute
 	LDA ($0C),Y
 	BEQ $E980
 	LDY #$08
-	LDA $C12C,Y
+	LDA SEDORIC_BUF1+$2C,Y
 	CMP #$3F
 	BEQ $E978
 	CMP ($0C),Y
@@ -1177,7 +1238,7 @@ eprom_microdisc_str_illegal_attribute
 	DEY 
 	BPL $E96D
 	TXA 
-	STA $C13F
+	STA SEDORIC_BUF1+$3F
 	RTS 
 ;******************************************************************************
 ; points to next directory entry
@@ -1194,9 +1255,9 @@ eprom_microdisc_str_illegal_attribute
 	JMP $E965
 	LDA $C024	; yes, gets it...
 	BEQ $E9A5
-	STA $C002
+	STA SEDORIC_SECTOR
 	LDA $C023
-	STA $C001
+	STA SEDORIC_TRACK
 	JMP $E958
 	LDX #$00
 	RTS 
@@ -1206,7 +1267,7 @@ eprom_microdisc_str_illegal_attribute
 read_boot_sector	
 	LDA $C013
 	BNE $E9A7
-	STA $C000
+	STA SEDORIC_DRIVE
 	LDA #$13 ; Loading boot sector at $c013 save it in  'buffer_adress_buffer_loading_saving' 
 	STA buffer_adress_buffer_loading_saving
 	LDA #$C0
@@ -1237,10 +1298,10 @@ read_boot_sector
 	CMP #$04
 	BCS $E9F2
 	INY 
-	STA $C12B
+	STA SEDORIC_BUF1+$2B
 	LDX #$09
 	LDA #$20
-	STA $C12B,X
+	STA SEDORIC_BUF1+$2B,X
 	DEX 
 	BNE $E9EB
 	RTS 
@@ -1296,7 +1357,7 @@ read_boot_sector
 
   
 	LDA $C00C
-	STA $C12B
+	STA SEDORIC_BUF1+$2B
 	JSR $E9E7
 	INY 
 	LDA ($E9),Y
@@ -1311,8 +1372,8 @@ read_boot_sector
 	CMP #$04
 	BCC $EA68
 	LDX #$04	; invalid filename
-	JMP $E01B
-	STA $C12B
+	JMP error_routine_vector
+	STA SEDORIC_BUF1+$2B
 	INY 
 	INY 
 	LDX #$00
@@ -1332,7 +1393,7 @@ read_boot_sector
 	RTS 
 
 
-	STA $C141
+	STA SEDORIC_BUF1+$41
 	LDA ($E9),Y
 	CMP #$2A	
 	BEQ $EAAB
@@ -1341,16 +1402,16 @@ read_boot_sector
 	JSR $E04E
 	CMP #$00
 	BEQ $EAAA
-	STA $C12C,X
+	STA SEDORIC_BUF1+$2C,X
 	INX 
 	INY 
-	DEC $C141
+	DEC SEDORIC_BUF1+$41
 	BNE $EA8F
 	RTS 
 	LDA #$3F
-	STA $C12C,X
+	STA SEDORIC_BUF1+$2C,X
 	INX 
-	DEC $C141
+	DEC SEDORIC_BUF1+$41
 	BNE $EAAD
 	INY 
 	RTS 
@@ -1375,27 +1436,30 @@ read_boot_sector
 ;******************************************************************************
 ; reads first directory sector
 ;
+
+LEAD3
+reads_first_directory_sector
 	JSR $E033
-	LDA $C126
-	STA $C001
-	LDA $C125
-	STA $C002
+	LDA SEDORIC_BUF1+$26
+	STA SEDORIC_TRACK
+	LDA SEDORIC_BUF1+$25
+	STA SEDORIC_SECTOR
 	LDA #$00
-	STA $C13F
+	STA SEDORIC_BUF1+$3F
 	JMP $E045
 
 ;******************************************************************************
 	LDX #$09
-	LDY $C13F
+	LDY SEDORIC_BUF1+$3F
 	LDA $C02C,Y
-	STA $C12C,X
+	STA SEDORIC_BUF1+$2C,X
 	INY 
 	INX 
 	CPX #$10
 	BNE $EAEF
 	RTS 
 ;******************************************************************************
-	LDX $C13F
+	LDX SEDORIC_BUF1+$3F
 	LDY #$06
 	LDA $C023,X
 	CMP #$20
@@ -1404,7 +1468,7 @@ read_boot_sector
 	INX 
 	DEY 
 	BNE $EB01
-	LDX $C13F
+	LDX SEDORIC_BUF1+$3F
 	LDY #$06
 	LDA $C023,X
 	CMP #$20
@@ -1424,20 +1488,21 @@ read_boot_sector
 	RTS 
 
 ;******************************************************************************
+LEB34
 	LDA $0C
-	STA $C147
+	STA SEDORIC_BUF1+$47
 	LDA $0D
-	STA $C148
+	STA SEDORIC_BUF1+$48
 	TSX 	
 	INX 
 	INX 
-	STX $C140
+	STX SEDORIC_BUF1+$40
 	RTS 
 
 ;******************************************************************************
 ; checks no '?' wildcard is used
 	LDX #$08
-	LDA $C12C,X
+	LDA SEDORIC_BUF1+$2C,X
 	CMP #$3F
 	BEQ $EB79
 	DEX 
@@ -1447,16 +1512,16 @@ read_boot_sector
 	.byt $43,$4F,$4D ; COM
 
 ;******************************************************************************
-	JSR $E006
+	JSR some_other_inits_vector
 	LDY #$00
 	TYA 
 	JSR $EA48
-	LDA $C132
+	LDA SEDORIC_BUF1+$32
 	CMP #$20
 	BNE $EB70
 	LDX #$02
 	LDA $EB52,X
-	STA $C132,X
+	STA SEDORIC_BUF1+$32,X
 	DEX 
 	BPL $EB67
 	JSR $EB45
@@ -1464,7 +1529,7 @@ read_boot_sector
 	JMP $E462
 ;******************************************************************************
 	LDX #$07	; prints "wildcards not allowed"
-	JMP $E01B
+	JMP error_routine_vector
 	
 
 
@@ -1532,219 +1597,242 @@ LED3F =$ED3F
 RESET_START
 	; Here we go !
 	sei	; Stop Interrupts, inits cpu then waits
-        cld	; Decimal mode
-        ldx     #$FF	; Set stack pointer
-        txs	
-        inx	; X =0 
-        txa	;  a = 0
-        tay	; Y= 0 
-LEB86:  dex	; X=0xff
-        bne     LEB86 ; Loop something needs to be waiting ?
-        dey
-        bne     LEB86 ; Loop again with Y
-LEB8C:  sta     $C000,x ; Set $c000 to 0, X=0 when it enters, clears some critical pages
-        sta     $C100,x ; Set ram overlay to 0 for area from C000 to $c1ff
-        sta     $00,x ;  clear page zero with 0
-        sta     $0200,x ; Clear page 2 also
-        dex ; Let's loop
-        bne     LEB8C
-        ldx     #$7A ; We initialize page 4 with datas in $eeed
-LEB9C:  lda     $EEED,x ; 
-        sta     $0480,x ; Store it in page 4; transfers switching routines in page 4
-        dex	
-        bpl     LEB9C ; Lets loop to copy 7b bytes
-        jsr     LEEAE ; We test RAM ? , if not correct it display an error,  checks overlay ram
-        ldx     #$0C
+    cld	; Decimal mode
+    ldx     #$FF	; Set stack pointer
+    txs	
+    inx	; X =0 
+    txa	;  a = 0
+    tay	; Y= 0 
+; $EB86:
+.(
+loop
+	dex	; X=0xff
+    bne loop ; Loop something needs to be waiting ?
+    dey
+    bne loop; Loop again with Y
+.)	
+.(
+;eb8c
+; this initialize some variables 		
+loop
+	sta     SEDORIC_DRIVE,x 		; Set $c000 to 0, X=0 when it enters, clears some critical pages
+    sta     SEDORIC_BUF1,x 	; Set ram overlay to 0 for area from C000 to $c1ff
+    sta     $00,x 			;  clear page zero with 0
+    sta     $0200,x 		; Clear page 2 also
+    dex 					; Let's loop
+    bne     loop
+.)		
+    ldx     #$7A ; We initialize page 4 with datas in $eeed
+.(	
+loop
+	lda     $EEED,x ; 
+    sta     $0480,x ; Store it in page 4; transfers switching routines in page 4
+    dex	
+    bpl     loop ; Lets loop to copy 7b bytes
+.)	
+    jsr     LEEAE ; We test RAM ? , if not correct it display an error,  checks overlay ram
+    ldx     #$0C
 .(
 loop
 	lda     $EF68,x ; Copy 13 bytes from $ef68, copies a routine in BFE0
-        sta     LBFE0,x ; Some kind of wrapper, to read rom location C002
-        dex
-        bpl     loop ; we loop
+    sta     LBFE0,x ; Some kind of wrapper, to read rom location C002
+    dex
+    bpl     loop ; we loop
 .)
-        jsr     LBFE0 ; ok let's switch to page 4
+    jsr     LBFE0 ; ok let's switch to page 4
 	
-        cpy     #$EA
-        beq     LEBC9 ;  is it a Basic v1.0 ?
-        lda     #$01 ; Store 1 to $c007, used as a variable for disc system FIXME
-        sta     $C007 ; indicates a Basic v1.1
-        lda     #$44
-        sta     $04DC
-        lda     #$47
-        sta     $04E4
+    cpy     #$EA
+    beq     LEBC9 ;  is it a Basic v1.0 ?
+    lda     #$01 ; Store 1 to $c007, used as a variable for disc system FIXME
+    sta     $C007 ; indicates a Basic v1.1
+    lda     #$44
+    sta     $04DC
+    lda     #$47
+    sta     $04E4
 LEBC9:  ldx     #$FF ; fakes the Basic's initialization
-        stx     $A9
-        lda     #$FF ; Set HIMEM ? Something like this (to avoid to crach hires video ram ? 
-        ldy     #$97
-        sta     $A6
-        sty     $A7
-        sta     $02C1
-        sty     $02C2
-        sta     $A2
-        sty     $A3
-        ldx     #$1C
-LEBE1:  lda     $EECF,x ; ok We copy again some datas ($1c bytes)
-        sta     $E1,x
-        dex
-        bne     LEBE1
-        lda     $C007
-        beq     part_oric_1
-        lda     #$B9 ; atmos part
-        sta     $F0
-        lda     #$EC
-        sta     $F1
-        lda     #$20
-        sta     $024E
-        lda     #$04
-        sta     $024F
-        lda     #$00
-        sta     $0260
-        ldx     #$12
-LEC07:  lda     $EE5D,x
-        sta     $0238,x ; copy IRQ handler atmos handler ..., 
-        dex
-        bpl     LEC07
-        lda     #$B0
-        ldy     #$CC
-        bmi     microdisc_continue_init
+    stx     $A9
+    lda     #$FF ; Set HIMEM ? Something like this (to avoid to crach hires video ram ? 
+    ldy     #$97
+    sta     $A6
+    sty     $A7
+    sta     $02C1
+    sty     $02C2
+    sta     $A2
+    sty     $A3
+    ldx     #$1C
+LEBE1:
+	lda     $EECF,x ; ok We copy again some datas ($1c bytes)
+    sta     $E1,x
+    dex
+    bne     LEBE1
+    lda     $C007
+    beq     part_oric_1
+    lda     #$B9 ; atmos part
+    sta     $F0
+    lda     #$EC
+    sta     $F1
+    lda     #$20
+    sta     $024E
+    lda     #$04
+    sta     $024F
+    lda     #$00
+    sta     $0260
+    ldx     #$12
+LEC07:
+	lda     $EE5D,x
+    sta     $0238,x ; copy IRQ handler atmos handler ..., 
+    dex
+    bpl     LEC07
+    lda     #$B0
+    ldy     #$CC
+    bmi     microdisc_continue_init
 ; $EC16
 part_oric_1
 	lda     #$FF ; oric1 part
-        ldy     #$BF
-        sta     $02E1 ; Store to Basic parameters
-        sty     $02E2
+    ldy     #$BF
+    sta     $02E1 ; Store to Basic parameters
+    sty     $02E2
 LEC20        
 	ldx     #$08
-LEC22:  lda     $EE54,x ; Set Oric-1 Handler !
-        sta     $0228,x
-        dex
-        bpl     LEC22
-        lda     #$ED
-        ldy     #$CB
+LEC22:
+	lda     $EE54,x ; Set Oric-1 Handler !
+    sta     $0228,x
+    dex
+    bpl     LEC22
+    lda     #$ED
+    ldy     #$CB
 ; $EC2F
 microdisc_continue_init
 	sta     $1B ; both
-        sty     $1C
-        lda     #$4C
-        sta     $1A
-        sta     $C3
-        sta     $21
-        sta     $02FB
-        lda     #$A0
-        ldy     #$D2
-        ldx     $C007
-        beq     LEC4B
-        lda     #$36
-        ldy     #$D3
-LEC4B:  sta     $22
-        sty     $23
-        sta     $02FC
-        sty     $02FD
-        lda     #$C4
-        ldy     #$04
-        sta     $02F5 ; Set Vector for command "!" to $04C4
-        sty     $02F6
-        lda     #$00
-        sta     $04FF
-        sta     $04FD
-        jsr     LE05A ; inits the oric with the NMI routine of Basic
-        dey ; Dunno some .byt
-        sed; Dunno
-        clv; Dunno
-        sed; Dunno
-        lda     #$50
-        sta     $31
-        lda     #$30
-        sta     $32
-        lda     #$03
-        sta     $C2
-        lda     #$00
-        sta     $D7
-        sta     $88
-        sta     $2F
-        pha
-        sta     $0500
-        sta     $0501
-        sta     $0502
-        sta     $02F7
-        sta     $2E
-        sta     $02F1
-        sta     $02F2
-        sta     $02F4
-        lda     #$88
-        sta     $85
-        lda     #$02 ; We set mode RELEASE/TEXT
-        sta     $02C0  ; Variable to set management of video ram
-        lda     #$01
-        ldy     #$05
-        sta     $9A
-        sty     $9B
-        lda     #$03 ; Set some variables in zero page
-        sta     $9C
-        sty     $9D
-        sta     $9E
-        sty     $9F
-        sta     $A0
-        sty     $A1
-        ldx     #$00 ; prints 'insert system disc'
-        jsr     LEE92
-        ldx     #$09 ; copies SYSTEMDOS filename to C12B
-LECC0:  lda     $EE40,x
-        sta     $C12B,x
-        dex
-        bpl     LECC0
-        lda     #$8A ; initializes Error address to EE8A
-        sta     $C149
-        lda     #$EE
-        sta     $C14A
-        ldx     #$D8 ; 'Force Interrupt' command
-        stx     MICRODISC_FDC_COMMAND
-        ldx     #$08
-        jsr     LE003  ; Restores track 0
-        jsr     LE048 ; read sector
-        jsr     LE000; initializes some parameters
-        jsr     LE009 ; loads SYSTEM.DOS
-        jsr     LEEA3 ; clears the top line
-        ldx     #$08 ; copies Basic line "!BOOTUP" to TIB
-LECEB:  lda     LED5A,x
-        sta     $35,x
-        dex
-        bpl     LECEB
-        ldx     #$FF ; prints DOS version on top line
-LECF5:  inx
-        lda     $9FD0,x
-        sta     $BB82,x
-        bne     LECF5
-        ldx     #$1A ; copies a routine to BFE0
-LED00:  lda     LED3F,x
-        sta     LBFE0,x
-        dex
-        bpl     LED00 
-        lda     #$AE ; prints Basic copyright
-        ldy     #$ED
-        ldx     $C007
-        beq     LED16
-        lda     #$F1
-        ldy     #$ED
-LED16:  sta     $0C
-        sty     $0D
-        jsr     LE02D
-        ldx     #$09 ; copies filename BOOTUPCOM to C12B
-LED1F:  lda     $EE4A,x
-        sta     $C12B,x
-        dex
-        bpl     LED1F
-        jsr     LE00C  ;searches BOOTUPCOM in directory
-        cpx     #$00
-        bne     LED3C ; found BOOTUPCOM ? executes !BOOTUP
-        stx     $35 ; no, removes !BOOTUP command from TIB
-        lda     #$35
-        sta     $0C
-        lda     #$EE
-        sta     $0D
-        jsr     LE02D ; and prints Ready
+    sty     $1C
+    lda     #$4C
+    sta     $1A
+    sta     $C3
+    sta     $21
+    sta     $02FB
+    lda     #$A0
+    ldy     #$D2
+    ldx     $C007
+    beq     LEC4B
+    lda     #$36
+    ldy     #$D3
+LEC4B:
+	sta     $22
+    sty     $23
+    sta     $02FC
+    sty     $02FD
+    lda     #$C4
+    ldy     #$04
+    sta     $02F5 ; Set Vector for command "!" to $04C4
+    sty     $02F6
+    lda     #$00
+    sta     $04FF
+    sta     SEDORIC_IDERROR
+    jsr     LE05A ; inits the oric with the NMI routine of Basic
+    dey ; Dunno some .byt
+    sed; Dunno
+    clv; Dunno
+    sed; Dunno
+    lda     #$50
+    sta     $31
+    lda     #$30
+    sta     $32
+    lda     #$03
+    sta     $C2
+    lda     #$00
+    sta     $D7
+    sta     $88
+    sta     $2F
+    pha
+    sta     $0500
+    sta     $0501
+    sta     $0502
+    sta     $02F7
+    sta     $2E
+    sta     $02F1
+    sta     $02F2
+    sta     $02F4
+    lda     #$88
+    sta     $85
+    lda     #$02 ; We set mode RELEASE/TEXT
+    sta     $02C0  ; Variable to set management of video ram
+    lda     #$01
+    ldy     #$05
+    sta     $9A
+    sty     $9B
+    lda     #$03 ; Set some variables in zero page
+    sta     $9C
+    sty     $9D
+    sta     $9E
+    sty     $9F
+    sta     $A0
+    sty     $A1
+    ldx     #$00 ; prints 'insert system disc'
+    jsr     LEE92
+    ldx     #$09 ; copies SYSTEMDOS filename to C12B
+LECC0:
+	lda     $EE40,x
+    sta     SEDORIC_BUF1+$2B,x
+    dex
+    bpl     LECC0
+    lda     #$8A ; initializes Error address to EE8A
+    sta     SEDORIC_BUF1+$49
+    lda     #$EE
+    sta     SEDORIC_BUF1+$4A
+    ldx     #$D8 ; 'Force Interrupt' command
+    stx     MICRODISC_FDC_COMMAND
+    ldx     #$08
+    jsr     LE003  ; Restores track 0
+    jsr     LE048 ; read sector
+    jsr     LE000; initializes some parameters
+    jsr     LE009 ; loads SYSTEM.DOS
+    jsr     LEEA3 ; clears the top line
+    ldx     #$08 ; copies Basic line "!BOOTUP" to TIB
+LECEB:
+	lda     LED5A,x
+    sta     $35,x
+    dex
+    bpl     LECEB
+    ldx     #$FF ; prints DOS version on top line
+LECF5:
+	inx
+    lda     $9FD0,x
+    sta     $BB82,x
+    bne     LECF5
+    ldx     #$1A ; copies a routine to BFE0
+LED00:
+	lda     LED3F,x
+    sta     LBFE0,x
+    dex
+    bpl     LED00 
+    lda     #$AE ; prints Basic copyright
+    ldy     #$ED
+    ldx     $C007
+    beq     LED16
+    lda     #$F1
+    ldy     #$ED
+LED16:
+	sta     $0C
+    sty     $0D
+    jsr     LE02D
+    ldx     #$09 ; copies filename BOOTUPCOM to C12B
+LED1F:
+	lda     $EE4A,x
+    sta     SEDORIC_BUF1+$2B,x
+    dex
+    bpl     LED1F
+    jsr     LE00C  ;searches BOOTUPCOM in directory
+    cpx     #$00
+    bne     LED3C ; found BOOTUPCOM ? executes !BOOTUP
+    stx     $35 ; no, removes !BOOTUP command from TIB
+    lda     #$35
+    sta     $0C
+    lda     #$EE
+    sta     $0D
+    jsr     LE02D ; and prints Ready
 
-LED3C:  jmp     LBFE0 ; goes to ram in order to activate overlay ram
+LED3C:
+	jmp     LBFE0 ; goes to ram in order to activate overlay ram
  
 ;******************************************************************************
 ; ED3F-ED59 : routine copied to BFE0
@@ -1761,38 +1849,37 @@ LED3C:  jmp     LBFE0 ; goes to ram in order to activate overlay ram
 	CLI 
 	JSR $D45A	; calls the Basic interpreter (no return)
 	.byt $CD,$C4,$BD,$C4
-	JMP ($C14B)	; init the OS
+	JMP (SEDORIC_BUF1+$4B)	; init the OS
 
 
-
-    
-    	.asc "!BOOTUP"
-    	.byt $00,$00
-    	; ed63
-    	.asc "insert system disc",0
+   	.asc "!BOOTUP"
+    .byt $00,$00
+    ; ed63
+str_insert_system_disk	
+    .asc "insert system disc",0
 	.byt $0c
-    	.asc "No operating system on disc"
-    	.byt $08,$00,$0c
-    	.asc "RV1 adjustment required"
-    	.byt $08,$00,$0c
+    .asc "No operating system on disc"
+    .byt $08,$00,$0c
+    .asc "RV1 adjustment required"
+    .byt $08,$00,$0c
 	.asc "ORIC EXTENDED BASIC V1.0"
 	.byt $0d,$0a,$60
-    	.asc " 1983 TANGERINE"
+    .asc " 1983 TANGERINE"
 	.byt $0d,$0a,$0a,$0a
-    	.asc "47870 BYTES FREE"
+    .asc "47870 BYTES FREE"
 	.byt $0d,$0a,$0a
-    	.byt  $00,$0c
-    	.asc "ORIC EXTENDED BASIC V1.1"
-    	.byt $0d,$0a,$60
-    	.asc " 1983 TANGERINE"
-    	.byt $0d,$0a,$0a,$0a
-    	.asc " 37631 BYTES FREE"
+    .byt  $00,$0c
+    .asc "ORIC EXTENDED BASIC V1.1"
+    .byt $0d,$0a,$60
+    .asc " 1983 TANGERINE"
+    .byt $0d,$0a,$0a,$0a
+    .asc " 37631 BYTES FREE"
 	.byt  $0d,$0a,$0a,$00,$0d,$0a
-    	.asc "Ready "
-    	.byt $0d,$0a,$00
-    	.byt  $00
-    	.asc "SYSTEMDOS",0
-    	.asc "BOOTUPCOM"
+    .asc "Ready "
+    .byt $0d,$0a,$00
+    .byt  $00
+    .asc "SYSTEMDOS",0
+    .asc "BOOTUPCOM"
     ;******************************************************************************
 ; EE54-EE5C vectors copied to 0228 (oric1)
 ;******************************************************************************
@@ -1822,45 +1909,45 @@ LED3C:  jmp     LBFE0 ; goes to ram in order to activate overlay ram
 ;ee70  
   
 jump1
-        ldx     #$31 ; Error prints 'RV1 adjustment required'
-        ldy     #$00 ; and halts the system
-        lda     #$1A ; Ok we fill ram to have text mode ... at least a bit Crap because it fills 256*5 bytes
+    ldx     #$31 ; Error prints 'RV1 adjustment required'
+    ldy     #$00 ; and halts the system
+    lda     #$1A ; Ok we fill ram to have text mode ... at least a bit Crap because it fills 256*5 bytes
 .(
 loop	
 	sta     $BB80,y ; 1280 bytes are filled but Text mode has only 1120 bytes
-        sta     $BC80,y ; This routine smells an optimized code
-        sta     $BD80,y ; So it does a 'Buffer overflow', even if it does not crash anything
-        sta     $BE80,y
-        sta     $BEFE,y
-        dey
-        bne     loop
+    sta     $BC80,y ; This routine smells an optimized code
+    sta     $BD80,y ; So it does a 'Buffer overflow', even if it does not crash anything
+    sta     $BE80,y
+    sta     $BEFE,y
+    dey
+    bne     loop
 .)
-        beq    hou
+    beq    hou
 
 
 ; ee8a
 
-        ldx     #$13 ; index of 'No operating system on disc' 
+    ldx     #$13 ; index of 'No operating system on disc' 
 ; ee8c
 hou
-        jsr     jump14 ; A bit strange !
+    jsr     jump14 ; A bit strange !
 loop_myself        
 	jmp     loop_myself ; We loop on ourself ! An error is displayed ; halt the system
 ; ee92
 jump14
-        jsr     eprom_microdisc_fill_space_on_top_line	 ; clears the top line
+    jsr     eprom_microdisc_fill_space_on_top_line	 ; clears the top line
 .(        
 	jmp     eprom_microdisc_display_message ; and prints a message on it
 ;ee98
 loop
 	inx ; prints a message on the top line
-        sta     $BB82,y ; At the top line
-        iny
+    sta     $BB82,y ; At the top line
+    iny
 ; $ee9d
 eprom_microdisc_display_message
 
-        lda     $ED63,x ; Display 'insert system disc !' or something else depends on X is set
-        bne     loop ; Was it the End of string ? '0' no we loop again to next char
+    lda     str_insert_system_disk,x ; Display 'insert system disc !' or something else depends on X is set
+    bne     loop ; Was it the End of string ? '0' no we loop again to next char
 .)
 MYVALUE
 ;eea2
@@ -1869,39 +1956,40 @@ eprom_microdisc_fill_space_on_top_line
 ;eea3
 
 	ldy     #$1B ; clears the top line
-        lda     #$20 ; Fill first line of ram video with space value
+    lda     #$20 ; Fill first line of ram video with space value
 .(
-loop:	sta     $BB81,y
-        dey
-        bne     loop
+loop:
+	sta     $BB81,y
+    dey
+    bne     loop
 .)
 	; Y equal to 0 here
-        rts
+    rts
 
 ; Checks overlay ram
     ; eeae
     ; This routines check ram overlay at $C045 
     ; SOme kind of memory test
-        ldx     #$00
+    ldx     #$00
 .(
 loop	
 	lda     $C0A5,x ; Get initial value at this place
-        tay	; We save it in y -> backup
-        lda     #$55 ; Fill buffer with #55
+    tay	; We save it in y -> backup
+    lda     #$55 ; Fill buffer with #55
 	sta     $C0A5,x ; $c045
-        cmp     $C0A5,x  ; we catch this value, 
-        bne     jump1 ; This written value is not correct ? RAM problem ?
+    cmp     $C0A5,x  ; we catch this value, 
+    bne     jump1 ; This written value is not correct ? RAM problem ?
 	lda     #$AA ; No We try to write another value
 	sta     $C0A5,x
-        cmp     $C0A5,x
-        bne     jump1; Value written not the same ! Memory error !
+    cmp     $C0A5,x
+    bne     jump1; Value written not the same ! Memory error !
 	tya	; Get the old value before we began to write
-        sta     $C0A5,x	; And we restore iy
-        inx	; -> Lets go to the next byte !
+    sta     $C0A5,x	; And we restore iy
+    inx	; -> Lets go to the next byte !
 	bne loop
 .)
-        rts
-	;*****************************************************************************
+	rts
+;*****************************************************************************
 ; EED0-EEE0 interpreter routine copied to E2
 ;*****************************************************************************
 
@@ -1919,9 +2007,6 @@ j16
 	JSR $EA41
 	RTS 
     
-
-  
-
    
     .byt $2c,$60,$ea,$2c,$60,$ea,$60,$80,$4f,$c7,$52,$58
 
@@ -1947,60 +2032,60 @@ j16
     jmp $4de
 ;$490         virtually
 	php ; calls a routine in rom or eprom
-    	sei ; destination bank specified in 0481
-    	sta $482
+	sei ; destination bank specified in 0481
+    sta $482
 L0228           = $0228
 L022B           = $022B
 L0484           = $0484
 L0490           = $0490
 L04E6           = $04E6
-        pla
-        sta     $0483
-        lda     $0480
-        pha
-        lda     $0481
-        jsr     L04E6
-        lda     $0483
-        pha
-        lda     $0482
-        plp
-        jsr     L0484
-        php
-        sei
-        sta     $0482
-        pla
-        sta     $0483
-        pla
-        jsr     L04E6
-        lda     $0483
-        pha
-        lda     $0482
-        plp
-        rts
-        lda     #$00
-        sta     $0481
-        lda     #$66
-        sta     $0485
-        lda     #$D4
-        sta     $0486
-        jmp     L0490
-        php
-        tsx
-        inc     $0102,x
-        jmp     L0228 ; changed to 0247 for a v1.0
-        php
-        tsx
-        inc     $0102,x
-        jmp     L022B ; changed to 0244 for a v1.1 
-        sei ; enables/disables rom
-        and     #$02
-        sta     $0481
-        lda     $0480
-        and     #$FD
-        ora     $0481
-        sta     MICRODISC_FDC
-        sta     $0480
-        rts
+    pla
+    sta     $0483
+    lda     $0480
+    pha
+    lda     $0481
+    jsr     L04E6
+    lda     $0483
+    pha
+    lda     $0482
+    plp
+    jsr     L0484
+    php
+    sei
+    sta     $0482
+    pla
+    sta     $0483
+    pla
+    jsr     L04E6
+    lda     $0483
+    pha
+    lda     $0482
+    plp
+    rts
+    lda     #$00
+    sta     $0481
+    lda     #$66
+    sta     $0485
+    lda     #$D4
+    sta     $0486
+    jmp     L0490
+    php
+    tsx
+    inc     $0102,x
+    jmp     L0228 ; changed to 0247 for a v1.0
+    php
+    tsx
+    inc     $0102,x
+    jmp     L022B ; changed to 0244 for a v1.1 
+    sei ; enables/disables rom
+    and     #$02
+    sta     $0481
+    lda     $0480
+    and     #$FD
+    ora     $0481
+    sta     MICRODISC_FDC
+    sta     $0480
+    rts
   ;*************************************
     
 ;******************************************************************************
@@ -2010,11 +2095,11 @@ L04E6           = $04E6
     ; $ef68
     ; This bytes are copied to $bfE0 0x0C bytes
     ; Datas Some kind of wrapper to leave eprom
-        lda     #$06
-        jsr     $0487
-        ldy     $C002
-        lda     #$00
-        jmp     $0487
+    lda     #$06
+    jsr     $0487
+    ldy     SEDORIC_SECTOR
+    lda     #$00
+    jmp     $0487
     
   ;*************************************
  	.dsb 4187,255
